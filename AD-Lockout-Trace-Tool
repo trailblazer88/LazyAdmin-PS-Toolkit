@@ -1,10 +1,11 @@
 using namespace System.Windows.Forms
 using namespace System.Drawing
+using namespace System.Timers
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Create the form
+# -- Create Form --
 $form = New-Object Form
 $form.Text = "AD Lockout & Bad Password Tracer"
 $form.Size = New-Object Size(1050, 720)
@@ -12,7 +13,9 @@ $form.StartPosition = "CenterScreen"
 $form.Font = New-Object Font("Segoe UI", 10)
 $form.BackColor = [Color]::White
 
-# Username
+# -- Controls --
+
+# Username label and textbox
 $lblUser = New-Object Label
 $lblUser.Text = "Username:"
 $lblUser.Location = New-Object Point(20, 20)
@@ -23,7 +26,7 @@ $txtUser.Location = New-Object Point(100, 18)
 $txtUser.Size = New-Object Size(180, 25)
 $form.Controls.Add($txtUser)
 
-# Domain
+# Domain label and combobox
 $lblDomain = New-Object Label
 $lblDomain.Text = "Domain:"
 $lblDomain.Location = New-Object Point(300, 20)
@@ -35,7 +38,7 @@ $cmbDomain.Size = New-Object Size(200, 25)
 $cmbDomain.DropDownStyle = 'DropDownList'
 $form.Controls.Add($cmbDomain)
 
-# Dates
+# From date label and picker
 $lblFrom = New-Object Label
 $lblFrom.Text = "From:"
 $lblFrom.Location = New-Object Point(580, 20)
@@ -46,6 +49,7 @@ $dtpFrom.Location = New-Object Point(620, 18)
 $dtpFrom.Value = (Get-Date).AddDays(-1)
 $form.Controls.Add($dtpFrom)
 
+# To date label and picker
 $lblTo = New-Object Label
 $lblTo.Text = "To:"
 $lblTo.Location = New-Object Point(760, 20)
@@ -56,20 +60,20 @@ $dtpTo.Location = New-Object Point(790, 18)
 $dtpTo.Value = Get-Date
 $form.Controls.Add($dtpTo)
 
-# Run Button
+# Run button
 $btnRun = New-Object Button
 $btnRun.Text = "Run Trace"
 $btnRun.Location = New-Object Point(920, 16)
 $btnRun.Size = New-Object Size(100, 30)
 $form.Controls.Add($btnRun)
 
-# Progress Bar
+# Progress bar
 $progress = New-Object ProgressBar
 $progress.Location = New-Object Point(20, 60)
 $progress.Size = New-Object Size(1000, 20)
 $form.Controls.Add($progress)
 
-# Status Bar
+# Status bar with status label
 $statusBar = New-Object StatusStrip
 $statusLabel = New-Object ToolStripStatusLabel
 $statusLabel.Text = "Ready"
@@ -83,7 +87,7 @@ $lvDC.FullRowSelect = $true
 $lvDC.GridLines = $true
 $lvDC.Size = New-Object Size(480, 250)
 $lvDC.Location = New-Object Point(20, 90)
-$lvDC.Columns.Add("DC", 200) | Out-Null
+$lvDC.Columns.Add("Domain Controller", 200) | Out-Null
 $lvDC.Columns.Add("Status", 260) | Out-Null
 $form.Controls.Add($lvDC)
 
@@ -97,7 +101,7 @@ $lvEvt.Location = New-Object Point(520, 90)
 "DC","Caller","Time","EventID","Reason" | ForEach-Object { $lvEvt.Columns.Add($_,90) | Out-Null }
 $form.Controls.Add($lvEvt)
 
-# Export Button
+# Export CSV button
 $btnExport = New-Object Button
 $btnExport.Text = "Export CSV"
 $btnExport.Location = New-Object Point(20, 350)
@@ -105,19 +109,90 @@ $btnExport.Size = New-Object Size(100, 30)
 $btnExport.Enabled = $false
 $form.Controls.Add($btnExport)
 
-# Load domains
+# -- Populate domain list --
 try {
-    [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains.Name | ForEach-Object {
-        $cmbDomain.Items.Add($_) | Out-Null
+    $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+    foreach ($domain in $forest.Domains) {
+        $cmbDomain.Items.Add($domain.Name) | Out-Null
     }
-    $cmbDomain.SelectedIndex = 0
+    if ($cmbDomain.Items.Count -gt 0) { $cmbDomain.SelectedIndex = 0 }
 } catch {
-    [MessageBox]::Show("Error loading domain list: $_")
+    [MessageBox]::Show("Error loading domain list:`n$($_.Exception.Message)")
 }
 
-$global:Results = @()
+# -- Runspace pool for async operations --
+$runspacePool = [runspacefactory]::CreateRunspacePool(1, [environment]::ProcessorCount)
+$runspacePool.Open()
 
-# Async Runspace logic
+function Invoke-LockoutQueryAsync {
+    param($user, $domain, $from, $to, $eventIds)
+
+    $ps = [powershell]::Create()
+    $ps.RunspacePool = $runspacePool
+
+    $scriptBlock = {
+        param($user, $domain, $from, $to, $eventIds)
+
+        $results = @()
+        $statuses = @()
+
+        try {
+            $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+            $targetDomain = $forest.Domains | Where-Object { $_.Name -ieq $domain }
+            if (-not $targetDomain) {
+                throw "Domain '$domain' not found in forest."
+            }
+
+            $dcs = $targetDomain.DomainControllers
+            foreach ($dc in $dcs) {
+                $status = "Success"
+                try {
+                    $logs = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
+                        LogName='Security'; ID=$eventIds; StartTime=$from; EndTime=$to
+                    } -ErrorAction Stop
+
+                    foreach ($log in $logs) {
+                        $xml = [xml]$log.ToXml()
+                        $target = ($xml.Event.EventData.Data | Where-Object Name -eq "TargetUserName").'#text'
+                        if ($target -ieq $user) {
+                            $caller = ($xml.Event.EventData.Data | Where-Object Name -match "CallerComputerName|WorkstationName|Workstation").'#text'
+                            $reason = switch ($log.Id) {
+                                4740 { 'Lockout' }
+                                4625 { 'Failed Logon' }
+                                4771 { 'Kerberos Fail' }
+                                4776 { 'NTLM Fail' }
+                                default { 'Other' }
+                            }
+                            $results += [pscustomobject]@{
+                                DC = $dc.Name
+                                Caller = $caller
+                                Time = $log.TimeCreated
+                                EventID = $log.Id
+                                Reason = $reason
+                            }
+                        }
+                    }
+                } catch {
+                    $status = "Error: $($_.Exception.Message -split '\n')[0]"
+                }
+                $statuses += [pscustomobject]@{ DC = $dc.Name; Status = $status }
+            }
+
+            return @{ Results = $results; Statuses = $statuses }
+        }
+        catch {
+            return @{ Results = @(); Statuses = @([pscustomobject]@{ DC = 'N/A'; Status = $_.Exception.Message }) }
+        }
+    }
+
+    $ps.AddScript($scriptBlock).AddArgument($user).AddArgument($domain).AddArgument($from).AddArgument($to).AddArgument($eventIds) | Out-Null
+
+    $asyncResult = $ps.BeginInvoke()
+
+    return @{ PowerShell = $ps; AsyncResult = $asyncResult }
+}
+
+# -- Run Button click handler --
 $btnRun.Add_Click({
     $user = $txtUser.Text.Trim()
     $domain = $cmbDomain.SelectedItem
@@ -133,103 +208,51 @@ $btnRun.Add_Click({
     $btnExport.Enabled = $false
     $lvDC.Items.Clear()
     $lvEvt.Items.Clear()
-    $progress.Value = 0
-    $statusLabel.Text = "Starting..."
+    $progress.Style = 'Marquee'
+    $statusLabel.Text = "Running..."
 
-    $global:Results = @()
-    $scriptBlock = {
-        param($user, $domain, $from, $to, $eventIds)
+    $job = Invoke-LockoutQueryAsync -user $user -domain $domain -from $from -to $to -eventIds $eventIds
 
-        $results = @()
-        $statuses = @()
+    # Timer to poll for completion
+    $timer = New-Object Timers.Timer
+    $timer.Interval = 500
+    $timer.AutoReset = $true
+    $timer.Enabled = $true
 
-        $dcs = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains |
-               Where-Object Name -ieq $domain |
-               ForEach-Object { $_.DomainControllers }
+    $timer.Add_Elapsed({
+        if ($job.AsyncResult.IsCompleted) {
+            $timer.Stop()
+            $timer.Dispose()
+            $progress.Style = 'Blocks'
 
-        $i = 0
-        $total = $dcs.Count
+            $output = $job.PowerShell.EndInvoke($job.AsyncResult)
+            $job.PowerShell.Dispose()
 
-        foreach ($dc in $dcs) {
-            $i++
-            $percent = [math]::Round(($i / $total) * 100)
-            [System.Windows.Forms.Application]::DoEvents()
-            $statusLabel.Text = "Querying $($dc.Name)..."
-
-            $status = "Success"
-            try {
-                $logs = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
-                    LogName='Security'; ID=$eventIds; StartTime=$from; EndTime=$to
-                } -ErrorAction Stop
-
-                foreach ($log in $logs) {
-                    $xml = [xml]$log.ToXml()
-                    $target = ($xml.Event.EventData.Data | Where-Object Name -eq "TargetUserName").'#text'
-                    if ($target -ieq $user) {
-                        $caller = ($xml.Event.EventData.Data | Where-Object Name -match "CallerComputerName|WorkstationName|Workstation").'#text'
-                        $reason = switch ($log.Id) {
-                            4740 { 'Lockout' }
-                            4625 { 'Failed Logon' }
-                            4771 { 'Kerberos Fail' }
-                            4776 { 'NTLM Fail' }
-                            default { 'Other' }
-                        }
-
-                        $results += [pscustomobject]@{
-                            DC = $dc.Name
-                            Caller = $caller
-                            Time = $log.TimeCreated
-                            EventID = $log.Id
-                            Reason = $reason
-                        }
-                    }
+            # Update UI on GUI thread
+            $form.Invoke([action]{
+                foreach ($dc in $output.Statuses) {
+                    $item = New-Object ListViewItem($dc.DC)
+                    $item.SubItems.Add($dc.Status)
+                    if ($dc.Status -like "Error*") { $item.BackColor = "LightSalmon" }
+                    elseif ($dc.Status -eq "Success") { $item.BackColor = "LightGreen" }
+                    $lvDC.Items.Add($item)
                 }
-            } catch {
-                $status = "Error: $($_.Exception.Message -split '`n')[0]"
-            }
 
-            $statuses += [pscustomobject]@{ DC = $dc.Name; Status = $status }
-            $progress.Value = $percent
+                foreach ($evt in $output.Results) {
+                    $item = New-Object ListViewItem($evt.DC)
+                    $item.SubItems.AddRange(@($evt.Caller, $evt.Time.ToString("g"), $evt.EventID, $evt.Reason))
+                    $lvEvt.Items.Add($item)
+                }
+
+                $statusLabel.Text = "Completed."
+                $btnRun.Enabled = $true
+                $btnExport.Enabled = $lvEvt.Items.Count -gt 0
+            })
         }
-
-        return @{ Results = $results; Statuses = $statuses }
-    }
-
-    $powershell = [powershell]::Create().AddScript($scriptBlock).AddArgument($user).AddArgument($domain).AddArgument($from).AddArgument($to).AddArgument($eventIds)
-    $powershell.RunspacePool = [RunspaceFactory]::CreateRunspacePool(1, [Environment]::ProcessorCount)
-    $powershell.RunspacePool.Open()
-
-    $asyncResult = $powershell.BeginInvoke()
-
-    while (-not $asyncResult.IsCompleted) {
-        Start-Sleep -Milliseconds 200
-        [System.Windows.Forms.Application]::DoEvents()
-    }
-
-    $output = $powershell.EndInvoke($asyncResult)
-    $powershell.Dispose()
-
-    # Load results into UI
-    foreach ($dc in $output.Statuses) {
-        $item = New-Object ListViewItem($dc.DC)
-        $item.SubItems.Add($dc.Status)
-        if ($dc.Status -like "Error*") { $item.BackColor = "LightSalmon" }
-        elseif ($dc.Status -eq "Success") { $item.BackColor = "LightGreen" }
-        $lvDC.Items.Add($item)
-    }
-
-    foreach ($evt in $output.Results) {
-        $item = New-Object ListViewItem($evt.DC)
-        $item.SubItems.AddRange(@($evt.Caller, $evt.Time.ToString("g"), $evt.EventID, $evt.Reason))
-        $lvEvt.Items.Add($item)
-    }
-
-    $statusLabel.Text = "Completed."
-    $btnRun.Enabled = $true
-    $btnExport.Enabled = $lvEvt.Items.Count -gt 0
+    })
 })
 
-# Export CSV button
+# -- Export CSV button --
 $btnExport.Add_Click({
     if ($lvEvt.Items.Count -eq 0) {
         [MessageBox]::Show("No events to export.")
@@ -251,5 +274,9 @@ $btnExport.Add_Click({
     }
 })
 
-# Show the form
+# -- Show Form --
 [void]$form.ShowDialog()
+
+# Cleanup runspace pool on exit
+$runspacePool.Close()
+$runspacePool.Dispose()
