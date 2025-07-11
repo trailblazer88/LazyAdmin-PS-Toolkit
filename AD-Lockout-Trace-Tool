@@ -1,7 +1,8 @@
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
 using namespace System.Windows.Forms
 using namespace System.Drawing
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
 # Create the form
 $form = New-Object Form
@@ -219,4 +220,36 @@ $btnRun.Add_Click({
 
     foreach ($evt in $output.Results) {
         $item = New-Object ListViewItem($evt.DC)
-        $item.SubItems.AddRange(@($evt.Caller, $evt.Time.ToString("g"), $evt.EventID,
+        $item.SubItems.AddRange(@($evt.Caller, $evt.Time.ToString("g"), $evt.EventID, $evt.Reason))
+        $lvEvt.Items.Add($item)
+    }
+
+    $statusLabel.Text = "Completed."
+    $btnRun.Enabled = $true
+    $btnExport.Enabled = $lvEvt.Items.Count -gt 0
+})
+
+# Export CSV button
+$btnExport.Add_Click({
+    if ($lvEvt.Items.Count -eq 0) {
+        [MessageBox]::Show("No events to export.")
+        return
+    }
+    $dlg = New-Object SaveFileDialog
+    $dlg.Filter = "CSV Files|*.csv"
+    $dlg.FileName = "LockoutEvents.csv"
+    if ($dlg.ShowDialog() -eq [DialogResult]::OK) {
+        $lines = @()
+        $header = "DC,Caller,Time,EventID,Reason"
+        $lines += $header
+        foreach ($item in $lvEvt.Items) {
+            $line = ($item.SubItems | ForEach-Object { $_.Text }) -join ","
+            $lines += $line
+        }
+        $lines | Out-File -FilePath $dlg.FileName -Encoding UTF8
+        [MessageBox]::Show("Exported to $($dlg.FileName)")
+    }
+})
+
+# Show the form
+[void]$form.ShowDialog()
