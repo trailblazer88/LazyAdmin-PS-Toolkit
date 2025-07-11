@@ -1,1 +1,181 @@
 
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+function Get-EventDetails {
+    param (
+        [System.Diagnostics.Eventing.Reader.EventRecord]$event
+    )
+
+    $data = [xml]$event.ToXml()
+    $eventID = $event.Id
+    $timestamp = $event.TimeCreated
+    $dc = $event.MachineName
+
+    $eventData = @{
+        EventID          = $eventID
+        DomainController = $dc
+        Timestamp        = $timestamp
+        CallerComputer   = ""
+        Reason           = ""
+    }
+
+    switch ($eventID) {
+        4740 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "CallerComputerName" }).'#text'
+            $eventData.Reason = "Account Lockout"
+        }
+        4625 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "WorkstationName" }).'#text'
+            $status = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "Status" }).'#text'
+            $subStatus = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "SubStatus" }).'#text'
+            $eventData.Reason = "Failed Logon - Status: $status"
+        }
+        4771 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "WorkstationName" }).'#text'
+            $failureCode = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "FailureCode" }).'#text'
+            $eventData.Reason = "Kerberos Pre-Auth Failed - Code: $failureCode"
+        }
+        4776 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "Workstation" }).'#text'
+            $status = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "Status" }).'#text'
+            $eventData.Reason = "NTLM Auth Failed - Status: $status"
+        }
+    }
+
+    return $eventData
+}
+
+function Find-LockoutEvents {
+    param (
+        [string]$Username,
+        [string]$SelectedDomain,
+        [System.Windows.Forms.ListView]$statusListView
+    )
+
+    $results = @()
+    $eventIDs = 4740, 4625, 4771, 4776
+
+    $domainContext = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains |
+                     Where-Object { $_.Name -ieq $SelectedDomain }
+
+    foreach ($dc in $domainContext.DomainControllers) {
+        $statusItem = New-Object System.Windows.Forms.ListViewItem($dc.Name)
+        try {
+            $events = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
+                LogName = 'Security'
+                ID = $eventIDs
+                StartTime = (Get-Date).AddDays(-1)
+            } -ErrorAction Stop
+
+            foreach ($event in $events) {
+                $xml = [xml]$event.ToXml()
+                $user = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq "TargetUserName" }).'#text'
+                if ($user -and $user -ieq $Username) {
+                    $eventDetails = Get-EventDetails -event $event
+                    $results += [PSCustomObject]$eventDetails
+                }
+            }
+
+            $statusItem.SubItems.Add("Success")
+        } catch {
+            $statusItem.SubItems.Add("Failed: $_".Split("`n")[0])
+        }
+        $statusListView.Items.Add($statusItem)
+    }
+
+    return $results
+}
+
+# GUI
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "AD Lockout & Bad Logon Tracer"
+$form.Size = New-Object System.Drawing.Size(1000, 600)
+$form.StartPosition = "CenterScreen"
+
+$label1 = New-Object System.Windows.Forms.Label
+$label1.Text = "Username:"
+$label1.Location = New-Object System.Drawing.Point(10, 15)
+$form.Controls.Add($label1)
+
+$textbox = New-Object System.Windows.Forms.TextBox
+$textbox.Location = New-Object System.Drawing.Point(80, 12)
+$textbox.Size = New-Object System.Drawing.Size(200,20)
+$form.Controls.Add($textbox)
+
+$label2 = New-Object System.Windows.Forms.Label
+$label2.Text = "Select Domain:"
+$label2.Location = New-Object System.Drawing.Point(300, 15)
+$form.Controls.Add($label2)
+
+$domainDropdown = New-Object System.Windows.Forms.ComboBox
+$domainDropdown.Location = New-Object System.Drawing.Point(390, 12)
+$domainDropdown.Size = New-Object System.Drawing.Size(200,20)
+$domainDropdown.DropDownStyle = 'DropDownList'
+$form.Controls.Add($domainDropdown)
+
+$button = New-Object System.Windows.Forms.Button
+$button.Text = "Run Trace"
+$button.Location = New-Object System.Drawing.Point(610, 10)
+$button.Size = New-Object System.Drawing.Size(100,25)
+$form.Controls.Add($button)
+
+$listView = New-Object System.Windows.Forms.ListView
+$listView.View = 'Details'
+$listView.FullRowSelect = $true
+$listView.GridLines = $true
+$listView.Size = New-Object System.Drawing.Size(960, 300)
+$listView.Location = New-Object System.Drawing.Point(10, 50)
+$listView.Columns.Add("DC", 150)
+$listView.Columns.Add("Caller", 180)
+$listView.Columns.Add("Time", 180)
+$listView.Columns.Add("EventID", 60)
+$listView.Columns.Add("Reason", 370)
+$form.Controls.Add($listView)
+
+$statusListView = New-Object System.Windows.Forms.ListView
+$statusListView.View = 'Details'
+$statusListView.FullRowSelect = $true
+$statusListView.GridLines = $true
+$statusListView.Size = New-Object System.Drawing.Size(960, 160)
+$statusListView.Location = New-Object System.Drawing.Point(10, 360)
+$statusListView.Columns.Add("Domain Controller", 300)
+$statusListView.Columns.Add("Status", 640)
+$form.Controls.Add($statusListView)
+
+# Populate domain list
+$forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+$forest.Domains | ForEach-Object { $domainDropdown.Items.Add($_.Name) }
+$domainDropdown.SelectedIndex = 0
+
+# Button action
+$button.Add_Click({
+    $listView.Items.Clear()
+    $statusListView.Items.Clear()
+
+    $username = $textbox.Text.Trim()
+    $domain = $domainDropdown.SelectedItem
+
+    if (-not $username) {
+        [System.Windows.Forms.MessageBox]::Show("Please enter a username.")
+        return
+    }
+
+    $results = Find-LockoutEvents -Username $username -SelectedDomain $domain -statusListView $statusListView
+
+    if ($results.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("No events found for $username in domain $domain.")
+    } else {
+        foreach ($res in $results) {
+            $item = New-Object System.Windows.Forms.ListViewItem($res.DomainController)
+            $item.SubItems.Add($res.CallerComputer)
+            $item.SubItems.Add($res.Timestamp.ToString("g"))
+            $item.SubItems.Add($res.EventID.ToString())
+            $item.SubItems.Add($res.Reason)
+            $listView.Items.Add($item)
+        }
+    }
+})
+
+# Run
+[void]$form.ShowDialog()
