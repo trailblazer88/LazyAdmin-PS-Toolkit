@@ -1,6 +1,3 @@
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
 using namespace System.Windows.Forms
 using namespace System.Drawing
 
@@ -12,96 +9,62 @@ $form.Font = New-Object Font("Segoe UI", 10)
 $form.BackColor = [Color]::White
 $form.MinimumSize = New-Object Size(1050, 720)
 
-# Input panel
+# INPUT PANEL (username, domain, date range, run button)
 $inputPanel = New-Object Panel
 $inputPanel.Location = New-Object Point(10,10)
 $inputPanel.Size = New-Object Size(1020,70)
 $inputPanel.Anchor = 'Top, Left, Right'
 $form.Controls.Add($inputPanel)
 
-# Username
-$lblUser = New-Object Label
-$lblUser.Text = "Username:"
-$lblUser.Location = New-Object Point(10,20)
-$lblUser.AutoSize = $true
+$lblUser = New-Object Label; $lblUser.Text = "Username:"; $lblUser.Location = New-Object Point(10,20); $lblUser.AutoSize = $true
 $inputPanel.Controls.Add($lblUser)
-
-$txtUser = New-Object TextBox
-$txtUser.Location = New-Object Point(90,15)
-$txtUser.Size = New-Object Size(180,25)
+$txtUser = New-Object TextBox; $txtUser.Location = New-Object Point(90,15); $txtUser.Size = New-Object Size(180,25)
 $inputPanel.Controls.Add($txtUser)
 
-# Domain
-$lblDomain = New-Object Label
-$lblDomain.Text = "Domain:"
-$lblDomain.Location = New-Object Point(290,20)
-$lblDomain.AutoSize = $true
+$lblDomain = New-Object Label; $lblDomain.Text = "Domain:"; $lblDomain.Location = New-Object Point(290,20); $lblDomain.AutoSize = $true
 $inputPanel.Controls.Add($lblDomain)
-
-$cmbDomain = New-Object ComboBox
-$cmbDomain.Location = New-Object Point(350,15)
-$cmbDomain.Size = New-Object Size(200,25)
+$cmbDomain = New-Object ComboBox; $cmbDomain.Location = New-Object Point(350,15); $cmbDomain.Size = New-Object Size(200,25)
 $cmbDomain.DropDownStyle = 'DropDownList'
 $inputPanel.Controls.Add($cmbDomain)
 
-# From date
-$lblFrom = New-Object Label
-$lblFrom.Text = "From:"
-$lblFrom.Location = New-Object Point(570,20)
-$lblFrom.AutoSize = $true
+$lblFrom = New-Object Label; $lblFrom.Text = "From:"; $lblFrom.Location = New-Object Point(570,20); $lblFrom.AutoSize = $true
 $inputPanel.Controls.Add($lblFrom)
-
-$dtpFrom = New-Object DateTimePicker
-$dtpFrom.Location = New-Object Point(620,15)
-$dtpFrom.Size = New-Object Size(130,25)
+$dtpFrom = New-Object DateTimePicker; $dtpFrom.Location = New-Object Point(620,15); $dtpFrom.Size = New-Object Size(130,25)
 $dtpFrom.Value = (Get-Date).AddDays(-1)
 $inputPanel.Controls.Add($dtpFrom)
 
-# To date
-$lblTo = New-Object Label
-$lblTo.Text = "To:"
-$lblTo.Location = New-Object Point(770,20)
-$lblTo.AutoSize = $true
+$lblTo = New-Object Label; $lblTo.Text = "To:"; $lblTo.Location = New-Object Point(770,20); $lblTo.AutoSize = $true
 $inputPanel.Controls.Add($lblTo)
-
-$dtpTo = New-Object DateTimePicker
-$dtpTo.Location = New-Object Point(800,15)
-$dtpTo.Size = New-Object Size(130,25)
+$dtpTo = New-Object DateTimePicker; $dtpTo.Location = New-Object Point(800,15); $dtpTo.Size = New-Object Size(130,25)
 $dtpTo.Value = Get-Date
 $inputPanel.Controls.Add($dtpTo)
 
-# Run button
-$btnRun = New-Object Button
-$btnRun.Text = "Run Trace"
-$btnRun.Location = New-Object Point(950,15)
-$btnRun.Size = New-Object Size(80,30)
+$btnRun = New-Object Button; $btnRun.Text = "Run Trace"; $btnRun.Location = New-Object Point(950,15); $btnRun.Size = New-Object Size(80,30)
 $inputPanel.Controls.Add($btnRun)
 
-# DC List panel
+# DOMAIN CONTROLLER STATUS LISTVIEW
 $dcPanel = New-Object Panel
 $dcPanel.Location = New-Object Point(10,90)
-$dcPanel.Size = New-Object Size(500,550)
+$dcPanel.Size = New-Object Size(500,520)
 $dcPanel.Anchor = 'Top, Left, Bottom'
 $form.Controls.Add($dcPanel)
 
-# Event List panel
-$eventPanel = New-Object Panel
-$eventPanel.Location = New-Object Point(520,90)
-$eventPanel.Size = New-Object Size(510,550)
-$eventPanel.Anchor = 'Top, Right, Bottom'
-$form.Controls.Add($eventPanel)
-
-# DC ListView
 $lvDC = New-Object ListView
 $lvDC.View = 'Details'
 $lvDC.FullRowSelect = $true
 $lvDC.GridLines = $true
 $lvDC.Dock = 'Fill'
 $lvDC.Columns.Add("Domain Controller", 230) | Out-Null
-$lvDC.Columns.Add("Status", 240) | Out-Null
+$lvDC.Columns.Add("Status", 250) | Out-Null
 $dcPanel.Controls.Add($lvDC)
 
-# Event ListView
+# EVENTS LISTVIEW
+$eventPanel = New-Object Panel
+$eventPanel.Location = New-Object Point(520,90)
+$eventPanel.Size = New-Object Size(510,520)
+$eventPanel.Anchor = 'Top, Right, Bottom'
+$form.Controls.Add($eventPanel)
+
 $lvEvt = New-Object ListView
 $lvEvt.View = 'Details'
 $lvEvt.FullRowSelect = $true
@@ -110,30 +73,7 @@ $lvEvt.Dock = 'Fill'
 "DC","Caller","Time","EventID","Reason" | ForEach-Object { $lvEvt.Columns.Add($_,100) | Out-Null }
 $eventPanel.Controls.Add($lvEvt)
 
-# Progress bar
-$progress = New-Object ProgressBar
-$progress.Location = New-Object Point(10,660)
-$progress.Size = New-Object Size(1020, 20)
-$progress.Anchor = 'Bottom, Left, Right'
-$form.Controls.Add($progress)
-
-# Status bar
-$statusBar = New-Object StatusStrip
-$statusBar.Location = New-Object Point(0,685)
-$statusBar.Size = New-Object Size(1040, 25)
-$statusBar.Anchor = 'Bottom, Left, Right'
-$form.Controls.Add($statusBar)
-
-# Status labels
-$statusLabel = New-Object ToolStripStatusLabel
-$statusLabel.Text = "Ready"
-$statusBar.Items.Add($statusLabel)
-
-$statusDCLabel = New-Object ToolStripStatusLabel
-$statusDCLabel.Text = ""
-$statusBar.Items.Add($statusDCLabel)
-
-# Export button
+# EXPORT BUTTON - moved above status strip, fully visible
 $btnExport = New-Object Button
 $btnExport.Text = "Export CSV"
 $btnExport.Location = New-Object Point(10,620)
@@ -141,6 +81,28 @@ $btnExport.Size = New-Object Size(100,30)
 $btnExport.Enabled = $false
 $btnExport.Anchor = 'Bottom, Left'
 $form.Controls.Add($btnExport)
+
+# PROGRESS BAR - width adjusted to not overlap status bar
+$progress = New-Object ProgressBar
+$progress.Location = New-Object Point(120,620)
+$progress.Size = New-Object Size(900, 30)
+$progress.Anchor = 'Bottom, Left, Right'
+$form.Controls.Add($progress)
+
+# STATUS STRIP - at bottom
+$statusBar = New-Object StatusStrip
+$statusBar.Location = New-Object Point(0,660)
+$statusBar.Size = New-Object Size(1040, 30)
+$statusBar.Anchor = 'Bottom, Left, Right'
+$form.Controls.Add($statusBar)
+
+$statusLabel = New-Object ToolStripStatusLabel
+$statusLabel.Text = "Ready"
+$statusBar.Items.Add($statusLabel)
+
+$statusDCLabel = New-Object ToolStripStatusLabel
+$statusDCLabel.Text = ""
+$statusBar.Items.Add($statusDCLabel)
 
 # Load domain list
 try {
@@ -153,95 +115,103 @@ try {
     [MessageBox]::Show("Error loading domain list:`n$($_.Exception.Message)")
 }
 
-# Variables to track job & progress
+# Variables for job/progress
 $global:Job = $null
-$global:ProgressIndex = 0
-$global:DCs = @()
-$global:Results = @()
-$global:Statuses = @()
+$global:ProgressFile = Join-Path $env:TEMP "lockout_trace_progress.json"
+Remove-Item $global:ProgressFile -ErrorAction Ignore
 
-# Background job script block
+# Job script block
 $scriptBlock = {
-    param($user, $domain, $from, $to, $eventIds)
+    param($user, $domain, $from, $to, $eventIds, $progressFile)
 
     $results = @()
     $statuses = @()
 
-    try {
-        $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
-        $targetDomain = $forest.Domains | Where-Object { $_.Name -ieq $domain }
-        if (-not $targetDomain) {
-            throw "Domain '$domain' not found in forest."
-        }
+    $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+    $targetDomain = $forest.Domains | Where-Object { $_.Name -ieq $domain }
+    if (-not $targetDomain) { throw "Domain '$domain' not found." }
 
-        $dcs = $targetDomain.DomainControllers
-        $totalDCs = $dcs.Count
-        for ($i=0; $i -lt $totalDCs; $i++) {
-            $dc = $dcs[$i]
-            # Write progress to a temp file (or PS variable won't survive job boundaries)
-            $progressPath = Join-Path $env:TEMP "lockout_trace_progress.txt"
-            "$($i+1)/$totalDCs $($dc.Name)" | Out-File -FilePath $progressPath -Encoding ASCII
+    $dcs = $targetDomain.DomainControllers
+    $totalDCs = $dcs.Count
 
-            $status = "Success"
-            try {
-                $logs = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
-                    LogName='Security'; ID=$eventIds; StartTime=$from; EndTime=$to
-                } -ErrorAction Stop
+    # Prepare progress tracking file
+    $progressData = @{}
+    $progressData.dcs = @()
+    $progressData.current = 0
+    $progressData.total = $totalDCs
+    $progressData | ConvertTo-Json | Out-File -FilePath $progressFile -Encoding ASCII
 
-                foreach ($log in $logs) {
-                    $xml = [xml]$log.ToXml()
-                    $target = ($xml.Event.EventData.Data | Where-Object Name -eq "TargetUserName").'#text'
-                    if ($target -ieq $user) {
-                        $caller = ($xml.Event.EventData.Data | Where-Object Name -match "CallerComputerName|WorkstationName|Workstation").'#text'
-                        $reason = switch ($log.Id) {
-                            4740 { 'Lockout' }
-                            4625 { 'Failed Logon' }
-                            4771 { 'Kerberos Fail' }
-                            4776 { 'NTLM Fail' }
-                            default { 'Other' }
-                        }
-                        $results += [pscustomobject]@{
-                            DC = $dc.Name
-                            Caller = $caller
-                            Time = $log.TimeCreated
-                            EventID = $log.Id
-                            Reason = $reason
-                        }
+    for ($i=0; $i -lt $totalDCs; $i++) {
+        $dc = $dcs[$i]
+        $status = "Success"
+        try {
+            $logs = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
+                LogName='Security'; ID=$eventIds; StartTime=$from; EndTime=$to
+            } -ErrorAction Stop
+
+            foreach ($log in $logs) {
+                $xml = [xml]$log.ToXml()
+                $target = ($xml.Event.EventData.Data | Where-Object Name -eq "TargetUserName").'#text'
+                if ($target -ieq $user) {
+                    $caller = ($xml.Event.EventData.Data | Where-Object Name -match "CallerComputerName|WorkstationName|Workstation").'#text'
+                    $reason = switch ($log.Id) {
+                        4740 { 'Lockout' }
+                        4625 { 'Failed Logon' }
+                        4771 { 'Kerberos Fail' }
+                        4776 { 'NTLM Fail' }
+                        default { 'Other' }
+                    }
+                    $results += [pscustomobject]@{
+                        DC = $dc.Name
+                        Caller = $caller
+                        Time = $log.TimeCreated
+                        EventID = $log.Id
+                        Reason = $reason
                     }
                 }
-            } catch {
-                $status = "Error: $($_.Exception.Message -split '\n')[0]"
             }
-            $statuses += [pscustomobject]@{ DC = $dc.Name; Status = $status }
+        } catch {
+            $status = "Error: $($_.Exception.Message -split '\n')[0]"
         }
 
-        # Remove progress file after done
-        Remove-Item $progressPath -ErrorAction Ignore
+        $statuses += [pscustomobject]@{ DC = $dc.Name; Status = $status }
 
-        return @{ Results = $results; Statuses = $statuses }
+        # Update progress JSON file
+        $progressData.current = $i+1
+        $progressData.dcs = $statuses
+        $progressData | ConvertTo-Json | Out-File -FilePath $progressFile -Encoding ASCII
     }
-    catch {
-        return @{ Results = @(); Statuses = @([pscustomobject]@{ DC = 'N/A'; Status = $_.Exception.Message }) }
-    }
+    return @{ Results = $results; Statuses = $statuses }
 }
 
-# Timer to update status from progress file
+# Timer to read progress JSON and update UI
 $progressTimer = New-Object Timers.Timer
 $progressTimer.Interval = 1000
 $progressTimer.AutoReset = $true
 $progressTimer.Enabled = $false
 $progressTimer.Add_Elapsed({
-    if (Test-Path $env:TEMP\lockout_trace_progress.txt) {
-        $line = Get-Content $env:TEMP\lockout_trace_progress.txt -ErrorAction SilentlyContinue
-        if ($line) {
+    if (Test-Path $global:ProgressFile) {
+        $json = Get-Content $global:ProgressFile -Raw | ConvertFrom-Json
+        if ($json) {
             $form.Invoke([action]{
-                $statusDCLabel.Text = "Processing DC: $line"
+                $statusLabel.Text = "Running..."
+                $statusDCLabel.Text = "Processing DC $($json.current) of $($json.total)"
+
+                # Update DC list with latest statuses
+                $lvDC.BeginUpdate()
+                $lvDC.Items.Clear()
+                foreach ($dcStatus in $json.dcs) {
+                    $item = New-Object ListViewItem $dcStatus.DC
+                    $item.SubItems.Add($dcStatus.Status)
+                    $lvDC.Items.Add($item)
+                }
+                $lvDC.EndUpdate()
             })
         }
     }
 })
 
-# Run button click handler
+# Run button click
 $btnRun.Add_Click({
     $user = $txtUser.Text.Trim()
     $domain = $cmbDomain.SelectedItem
@@ -258,45 +228,48 @@ $btnRun.Add_Click({
     $lvDC.Items.Clear()
     $lvEvt.Items.Clear()
     $progress.Style = 'Marquee'
-    $statusLabel.Text = "Running..."
-    $statusDCLabel.Text = ""
+    $statusLabel.Text = "Starting..."
 
-    # Start timer for progress updates
+    # Remove old progress file
+    Remove-Item $global:ProgressFile -ErrorAction Ignore
+
+    # Start progress timer
     $progressTimer.Start()
 
     # Start job
-    $global:Job = Start-Job -ScriptBlock $scriptBlock -ArgumentList $user, $domain, $from, $to, $eventIds
-})
+    $global:Job = Start-Job -ScriptBlock $scriptBlock -ArgumentList $user, $domain, $from, $to, $eventIds, $global:ProgressFile
 
-# Timer to check job completion
-$jobCheckTimer = New-Object Timers.Timer
-$jobCheckTimer.Interval = 2000
-$jobCheckTimer.AutoReset = $true
-$jobCheckTimer.Enabled = $true
-$jobCheckTimer.Add_Elapsed({
-    if ($global:Job -and ($global:Job.State -eq 'Completed' -or $global:Job.State -eq 'Failed')) {
-        $jobCheckTimer.Stop()
-        $progressTimer.Stop()
-        $progress.Style = 'Blocks'
-
-        try {
-            $output = Receive-Job -Job $global:Job -ErrorAction Stop
-            Remove-Job -Job $global:Job -Force
-            $global:Job = $null
-
+    # Poll job completion in a timer to update UI
+    $checkTimer = New-Object Timers.Timer
+    $checkTimer.Interval = 1000
+    $checkTimer.AutoReset = $true
+    $checkTimer.Enabled = $true
+    $checkTimer.Add_Elapsed({
+        if ($global:Job -and $global:Job.HasMoreData -eq $false -and $global:Job.State -eq 'Completed') {
+            $checkTimer.Stop()
+            $progressTimer.Stop()
+            $progress.Style = 'Blocks'
             $form.Invoke([action]{
                 $statusLabel.Text = "Completed"
                 $statusDCLabel.Text = ""
 
+                # Get job output
+                $output = Receive-Job $global:Job -Keep
+                Remove-Job $global:Job
+                $global:Job = $null
+
                 # Update DC ListView statuses
+                $lvDC.BeginUpdate()
                 $lvDC.Items.Clear()
                 foreach ($status in $output.Statuses) {
                     $item = New-Object ListViewItem $status.DC
                     $item.SubItems.Add($status.Status)
                     $lvDC.Items.Add($item)
                 }
+                $lvDC.EndUpdate()
 
                 # Update event list
+                $lvEvt.BeginUpdate()
                 $lvEvt.Items.Clear()
                 foreach ($evt in $output.Results) {
                     $item = New-Object ListViewItem $evt.DC
@@ -306,20 +279,24 @@ $jobCheckTimer.Add_Elapsed({
                     $item.SubItems.Add($evt.Reason)
                     $lvEvt.Items.Add($item)
                 }
+                $lvEvt.EndUpdate()
 
                 $btnRun.Enabled = $true
                 $btnExport.Enabled = $lvEvt.Items.Count -gt 0
             })
         }
-        catch {
+        elseif ($global:Job -and $global:Job.State -eq 'Failed') {
+            $checkTimer.Stop()
+            $progressTimer.Stop()
+            $progress.Style = 'Blocks'
             $form.Invoke([action]{
-                [MessageBox]::Show("Error retrieving results: $_")
+                [MessageBox]::Show("Error running job: $($global:Job.ChildJobs[0].JobStateInfo.Reason.Message)")
                 $btnRun.Enabled = $true
                 $statusLabel.Text = "Error"
                 $statusDCLabel.Text = ""
             })
         }
-    }
+    })
 })
 
 # Export button click handler
@@ -343,5 +320,5 @@ $btnExport.Add_Click({
     }
 })
 
-# Show the form
+# Show form
 [void]$form.ShowDialog()
