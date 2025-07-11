@@ -1,56 +1,52 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# GUI Setup
+# ========== GUI Layout ==========
+
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "AD Lockout & Login Failure Tracer"
 $form.Size = New-Object System.Drawing.Size(1024, 650)
 $form.StartPosition = "CenterScreen"
 
-# Label: Username
+# Username label and textbox
 $labelUser = New-Object System.Windows.Forms.Label
 $labelUser.Text = "Username:"
 $labelUser.Location = New-Object System.Drawing.Point(20, 20)
 $labelUser.Size = New-Object System.Drawing.Size(100, 20)
 $form.Controls.Add($labelUser)
 
-# TextBox: Username
 $textboxUser = New-Object System.Windows.Forms.TextBox
 $textboxUser.Location = New-Object System.Drawing.Point(120, 18)
 $textboxUser.Size = New-Object System.Drawing.Size(200, 20)
 $form.Controls.Add($textboxUser)
 
-# Label: Domain
+# Domain dropdown
 $labelDomain = New-Object System.Windows.Forms.Label
 $labelDomain.Text = "Domain:"
 $labelDomain.Location = New-Object System.Drawing.Point(340, 20)
-$labelDomain.Size = New-Object System.Drawing.Size(80, 20)
+$labelDomain.Size = New-Object System.Drawing.Size(60, 20)
 $form.Controls.Add($labelDomain)
 
-# ComboBox: Domain Selector
 $domainDropdown = New-Object System.Windows.Forms.ComboBox
 $domainDropdown.Location = New-Object System.Drawing.Point(410, 18)
 $domainDropdown.Size = New-Object System.Drawing.Size(200, 20)
 $domainDropdown.DropDownStyle = 'DropDownList'
 $form.Controls.Add($domainDropdown)
 
-# Button: Run
+# Run button
 $runButton = New-Object System.Windows.Forms.Button
 $runButton.Text = "Run Trace"
 $runButton.Location = New-Object System.Drawing.Point(640, 16)
 $runButton.Size = New-Object System.Drawing.Size(100, 25)
 $form.Controls.Add($runButton)
 
-# ProgressBar
+# Progress bar
 $progressBar = New-Object System.Windows.Forms.ProgressBar
 $progressBar.Location = New-Object System.Drawing.Point(20, 50)
 $progressBar.Size = New-Object System.Drawing.Size(960, 20)
-$progressBar.Style = 'Continuous'
-$progressBar.Minimum = 0
-$progressBar.Maximum = 100
 $form.Controls.Add($progressBar)
 
-# Event ListView
+# Event list view
 $eventList = New-Object System.Windows.Forms.ListView
 $eventList.View = 'Details'
 $eventList.FullRowSelect = $true
@@ -64,7 +60,7 @@ $eventList.Columns.Add("EventID", 60)
 $eventList.Columns.Add("Reason", 360)
 $form.Controls.Add($eventList)
 
-# Status ListView
+# DC status view
 $statusList = New-Object System.Windows.Forms.ListView
 $statusList.View = 'Details'
 $statusList.FullRowSelect = $true
@@ -75,16 +71,16 @@ $statusList.Columns.Add("Domain Controller", 300)
 $statusList.Columns.Add("Status", 640)
 $form.Controls.Add($statusList)
 
-# Populate domain list
+# ========== Populate domain list ==========
 $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
 $forest.Domains | ForEach-Object { $domainDropdown.Items.Add($_.Name) }
 $domainDropdown.SelectedIndex = 0
 
+# ========== Helper function ==========
 function Get-EventDetails {
     param (
         [System.Diagnostics.Eventing.Reader.EventRecord]$event
     )
-
     $data = [xml]$event.ToXml()
     $eventID = $event.Id
     $timestamp = $event.TimeCreated
@@ -123,86 +119,7 @@ function Get-EventDetails {
     return $eventData
 }
 
-$runTraceWorker = New-Object System.ComponentModel.BackgroundWorker
-$runTraceWorker.WorkerReportsProgress = $true
-
-$runTraceWorker.DoWork += {
-    param ($sender, $e)
-
-    $params = $e.Argument
-    $username = $params.Username
-    $domainName = $params.DomainName
-
-    $eventIDs = 4740, 4625, 4771, 4776
-    $results = @()
-
-    $domain = $forest.Domains | Where-Object { $_.Name -ieq $domainName }
-    $dcs = $domain.DomainControllers
-    $dcCount = $dcs.Count
-    $i = 0
-
-    foreach ($dc in $dcs) {
-        $progress = [math]::Round(($i / $dcCount) * 100)
-        $runTraceWorker.ReportProgress($progress, @{ DC = $dc.Name; Status = "Working..." })
-        try {
-            $events = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
-                LogName = 'Security'
-                ID = $eventIDs
-                StartTime = (Get-Date).AddDays(-1)
-            } -ErrorAction Stop
-
-            foreach ($event in $events) {
-                $xml = [xml]$event.ToXml()
-                $user = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq "TargetUserName" }).'#text'
-                if ($user -and $user -ieq $username) {
-                    $eventDetails = Get-EventDetails -event $event
-                    $results += [PSCustomObject]$eventDetails
-                }
-            }
-
-            $runTraceWorker.ReportProgress($progress, @{ DC = $dc.Name; Status = "Success" })
-        } catch {
-            $runTraceWorker.ReportProgress($progress, @{ DC = $dc.Name; Status = "Failed: $_".Split("`n")[0] })
-        }
-        $i++
-    }
-
-    $e.Result = $results
-}
-
-$runTraceWorker.ProgressChanged += {
-    param ($s, $e)
-    $progressBar.Value = $e.ProgressPercentage
-
-    $dc = $e.UserState.DC
-    $status = $e.UserState.Status
-
-    $item = New-Object System.Windows.Forms.ListViewItem($dc)
-    $item.SubItems.Add($status)
-    $statusList.Items.Add($item)
-}
-
-$runTraceWorker.RunWorkerCompleted += {
-    param ($s, $e)
-
-    $runButton.Enabled = $true
-    $progressBar.Value = 100
-    $results = $e.Result
-
-    if (-not $results -or $results.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show("No events found.")
-        return
-    }
-
-    foreach ($res in $results) {
-        $item = New-Object System.Windows.Forms.ListViewItem($res.DomainController)
-        $item.SubItems.Add($res.CallerComputer)
-        $item.SubItems.Add($res.Timestamp.ToString("g"))
-        $item.SubItems.Add($res.EventID.ToString())
-        $item.SubItems.Add($res.Reason)
-        $eventList.Items.Add($item)
-    }
-}
+# ========== Background Job Logic ==========
 
 $runButton.Add_Click({
     $eventList.Items.Clear()
@@ -219,11 +136,79 @@ $runButton.Add_Click({
 
     $runButton.Enabled = $false
 
-    $runTraceWorker.RunWorkerAsync(@{
-        Username   = $username
-        DomainName = $domainName
-    })
+    $scriptBlock = {
+        param ($username, $domainName)
+
+        $results = @()
+        $statusUpdates = @()
+        $eventIDs = 4740, 4625, 4771, 4776
+
+        $domain = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains | Where-Object { $_.Name -ieq $domainName }
+        $dcs = $domain.DomainControllers
+        $total = $dcs.Count
+        $i = 0
+
+        foreach ($dc in $dcs) {
+            $dcName = $dc.Name
+            try {
+                $events = Get-WinEvent -ComputerName $dcName -FilterHashtable @{
+                    LogName = 'Security'
+                    ID = $eventIDs
+                    StartTime = (Get-Date).AddDays(-1)
+                } -ErrorAction Stop
+
+                foreach ($event in $events) {
+                    $xml = [xml]$event.ToXml()
+                    $user = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq "TargetUserName" }).'#text'
+                    if ($user -and $user -ieq $username) {
+                        $eventDetails = & $using:GetEventDetails $event
+                        $results += $eventDetails
+                    }
+                }
+
+                $statusUpdates += [PSCustomObject]@{ DC = $dcName; Status = "Success" }
+            } catch {
+                $statusUpdates += [PSCustomObject]@{ DC = $dcName; Status = "Failed: $_".Split("`n")[0] }
+            }
+
+            $i++
+            [System.Threading.Thread]::Sleep(200)
+            Write-Progress -Activity "Querying DCs" -Status "$dcName" -PercentComplete (($i / $total) * 100)
+        }
+
+        return @{ Events = $results; Status = $statusUpdates }
+    }
+
+    $job = Start-Job -ScriptBlock $scriptBlock -ArgumentList $username, $domainName
+
+    Register-ObjectEvent -InputObject $job -EventName 'StateChanged' -Action {
+        if ($Event.SourceEventArgs.JobStateInfo.State -eq 'Completed') {
+            $result = Receive-Job $Event.Sender
+
+            $form.Invoke({
+                $progressBar.Value = 100
+                $runButton.Enabled = $true
+
+                foreach ($status in $result.Status) {
+                    $item = New-Object System.Windows.Forms.ListViewItem($status.DC)
+                    $item.SubItems.Add($status.Status)
+                    $statusList.Items.Add($item)
+                }
+
+                foreach ($res in $result.Events) {
+                    $item = New-Object System.Windows.Forms.ListViewItem($res.DomainController)
+                    $item.SubItems.Add($res.CallerComputer)
+                    $item.SubItems.Add($res.Timestamp.ToString("g"))
+                    $item.SubItems.Add($res.EventID)
+                    $item.SubItems.Add($res.Reason)
+                    $eventList.Items.Add($item)
+                }
+            })
+            Unregister-Event -SourceIdentifier $Event.SourceIdentifier
+            Remove-Job $Event.Sender
+        }
+    }
 })
 
+# ========== Show GUI ==========
 [void]$form.ShowDialog()
-
