@@ -1,6 +1,6 @@
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing, System.Management.Automation
 
-# ---------- GUI Setup ----------
+# --- Form setup ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "AD Lockout & Login Failure Tracer"
 $form.Size = New-Object System.Drawing.Size(1040, 750)
@@ -18,7 +18,7 @@ $txtUser.Location = New-Object System.Drawing.Point(110, 18)
 $txtUser.Size = New-Object System.Drawing.Size(200, 20)
 $form.Controls.Add($txtUser)
 
-# Domain selector
+# Domain label and combobox
 $lblDomain = New-Object System.Windows.Forms.Label
 $lblDomain.Text = 'Domain:'
 $lblDomain.Location = New-Object System.Drawing.Point(330, 20)
@@ -56,7 +56,7 @@ $dtpTo.Size = New-Object System.Drawing.Size(120, 20)
 $dtpTo.Value = Get-Date
 $form.Controls.Add($dtpTo)
 
-# Run trace button
+# Run button
 $btnRun = New-Object System.Windows.Forms.Button
 $btnRun.Text = 'Run Trace'
 $btnRun.Location = New-Object System.Drawing.Point(975, 16)
@@ -69,32 +69,32 @@ $prg.Location = New-Object System.Drawing.Point(20, 55)
 $prg.Size = New-Object System.Drawing.Size(1040, 20)
 $form.Controls.Add($prg)
 
-# DC status ListView
+# DC status listview
 $lvDC = New-Object System.Windows.Forms.ListView
 $lvDC.View = 'Details'
 $lvDC.GridLines = $true
 $lvDC.FullRowSelect = $true
 $lvDC.Location = New-Object System.Drawing.Point(20, 85)
 $lvDC.Size = New-Object System.Drawing.Size(500, 250)
-$lvDC.Columns.Add('Domain Controller', 200)
-$lvDC.Columns.Add('Status', 280)
+$lvDC.Columns.Add('Domain Controller', 200) | Out-Null
+$lvDC.Columns.Add('Status', 280) | Out-Null
 $form.Controls.Add($lvDC)
 
-# Events ListView
+# Events listview
 $lvEvent = New-Object System.Windows.Forms.ListView
 $lvEvent.View = 'Details'
 $lvEvent.GridLines = $true
 $lvEvent.FullRowSelect = $true
 $lvEvent.Location = New-Object System.Drawing.Point(540, 85)
 $lvEvent.Size = New-Object System.Drawing.Size(520, 550)
-$lvEvent.Columns.Add('DC', 100)
-$lvEvent.Columns.Add('Caller', 100)
-$lvEvent.Columns.Add('Time', 120)
-$lvEvent.Columns.Add('EventID', 70)
-$lvEvent.Columns.Add('Reason', 130)
+$lvEvent.Columns.Add('DC', 100) | Out-Null
+$lvEvent.Columns.Add('Caller', 100) | Out-Null
+$lvEvent.Columns.Add('Time', 120) | Out-Null
+$lvEvent.Columns.Add('EventID', 70) | Out-Null
+$lvEvent.Columns.Add('Reason', 130) | Out-Null
 $form.Controls.Add($lvEvent)
 
-# Export CSV button
+# Export button
 $btnExport = New-Object System.Windows.Forms.Button
 $btnExport.Text = 'Export CSV'
 $btnExport.Location = New-Object System.Drawing.Point(20, 345)
@@ -102,7 +102,7 @@ $btnExport.Size = New-Object System.Drawing.Size(100, 25)
 $btnExport.Enabled = $false
 $form.Controls.Add($btnExport)
 
-# Credits label
+# Credit label
 $lblCred = New-Object System.Windows.Forms.Label
 $lblCred.Text = 'Created by D.Mudh'
 $lblCred.Location = New-Object System.Drawing.Point(880, 15)
@@ -111,25 +111,22 @@ $lblCred.ForeColor = [System.Drawing.Color]::Gray
 $lblCred.Font = New-Object System.Drawing.Font('Arial',8,[System.Drawing.FontStyle]::Italic)
 $form.Controls.Add($lblCred)
 
-# Populate domain list before setting SelectedIndex
+# Populate domain combo box properly
 try {
-    [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains.Name | ForEach-Object { $cmbDomain.Items.Add($_) }
+    $domains = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains.Name
+    foreach ($d in $domains) { $cmbDomain.Items.Add($d) | Out-Null }
 } catch {
-    [System.Windows.Forms.MessageBox]::Show("Failed to get domains from forest.`n$_")
+    [System.Windows.Forms.MessageBox]::Show("Error retrieving domains: $_")
 }
+
 if ($cmbDomain.Items.Count -gt 0) { $cmbDomain.SelectedIndex = 0 }
 
-# Global results variable
+# Global results store
 $global:Results = @()
 
-# Function to parse and collect events
 function Invoke-Tracer {
-    param(
-        [string]$user,
-        [string]$domain,
-        [datetime]$from,
-        [datetime]$to
-    )
+    param($user, $domain, $from, $to)
+
     $ids = 4740, 4625, 4771, 4776
     $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
     $dom = $forest.Domains | Where-Object { $_.Name -ieq $domain }
@@ -144,8 +141,7 @@ function Invoke-Tracer {
 
     foreach ($dc in $dcs) {
         $count++
-        $pct = [int](($count / $total) * 100)
-        $prg.Value = $pct
+        $prg.Value = [int](($count / $total) * 100)
         [System.Windows.Forms.Application]::DoEvents()
 
         try {
@@ -165,12 +161,11 @@ function Invoke-Tracer {
                 if ($u -and $u -ieq $user) {
                     $caller = ($x.Event.EventData.Data | Where-Object { $_.Name -eq 'CallerComputerName' }).'#text'
                     if (-not $caller) {
-                        # Some events have different field for caller, fallback:
                         $caller = ($x.Event.EventData.Data | Where-Object { $_.Name -in @('WorkstationName','Workstation') }).'#text'
                     }
                     $reason = switch ($e.Id) {
                         4740 { 'Account Lockout' }
-                        4625 { "Failed Logon (4625) - Status " + (($x.Event.EventData.Data | Where-Object { $_.Name -eq 'Status' }).'#text') }
+                        4625 { "Failed Logon - Status " + (($x.Event.EventData.Data | Where-Object { $_.Name -eq 'Status' }).'#text') }
                         4771 { "Kerberos Pre-Auth Failure - Code " + (($x.Event.EventData.Data | Where-Object { $_.Name -eq 'FailureCode' }).'#text') }
                         4776 { "NTLM Failure - Status " + (($x.Event.EventData.Data | Where-Object { $_.Name -eq 'Status' }).'#text') }
                         default { '' }
@@ -211,18 +206,16 @@ function Invoke-Tracer {
     }
 }
 
-# Run button click handler
+# Run button click event
 $btnRun.Add_Click({
     if (-not $txtUser.Text) {
         [System.Windows.Forms.MessageBox]::Show("Please enter a username to search for.", "Input Required", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         return
     }
-
     if (-not $cmbDomain.Text) {
         [System.Windows.Forms.MessageBox]::Show("Please select a domain.", "Input Required", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         return
     }
-
     if ($dtpFrom.Value -gt $dtpTo.Value) {
         [System.Windows.Forms.MessageBox]::Show("'From' date cannot be later than 'To' date.", "Date Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         return
@@ -234,7 +227,6 @@ $btnRun.Add_Click({
     $lvEvent.Items.Clear()
     $btnExport.Enabled = $false
 
-    # Run the tracer synchronously but pump UI events so it doesn't freeze
     Invoke-Tracer -user $txtUser.Text -domain $cmbDomain.Text -from $dtpFrom.Value -to $dtpTo.Value
 
     if ($global:Results.Count -gt 0) {
@@ -246,9 +238,9 @@ $btnRun.Add_Click({
     $btnRun.Enabled = $true
 })
 
-# Export CSV button click handler
+# Export button click event
 $btnExport.Add_Click({
-    $path = Join-Path -Path $env:USERPROFILE -ChildPath "LockoutTrace_{0:yyyyMMddHHmmss}.csv" -f (Get-Date)
+    $path = Join-Path -Path $env:USERPROFILE -ChildPath ("LockoutTrace_{0:yyyyMMddHHmmss}.csv" -f (Get-Date))
     try {
         $global:Results | Export-Csv -NoTypeInformation -Path $path -Force
         [System.Windows.Forms.MessageBox]::Show("Export successful.`nSaved to:`n$path", "Export CSV", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
@@ -257,6 +249,6 @@ $btnExport.Add_Click({
     }
 })
 
-# Show the GUI
+# Enable visual styles and run form
 [System.Windows.Forms.Application]::EnableVisualStyles()
 [System.Windows.Forms.Application]::Run($form)
