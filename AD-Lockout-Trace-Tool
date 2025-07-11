@@ -5,111 +5,144 @@ using namespace System.Timers
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# -- Create Form --
 $form = New-Object Form
 $form.Text = "AD Lockout & Bad Password Tracer"
 $form.Size = New-Object Size(1050, 720)
 $form.StartPosition = "CenterScreen"
 $form.Font = New-Object Font("Segoe UI", 10)
 $form.BackColor = [Color]::White
+$form.MinimumSize = New-Object Size(1050, 720)
 
-# -- Controls --
+# Panel for inputs at the top
+$inputPanel = New-Object Panel
+$inputPanel.Location = New-Object Point(10, 10)
+$inputPanel.Size = New-Object Size(1020, 70)
+$inputPanel.Anchor = 'Top, Left, Right'
+$form.Controls.Add($inputPanel)
 
 # Username label and textbox
 $lblUser = New-Object Label
 $lblUser.Text = "Username:"
-$lblUser.Location = New-Object Point(20, 20)
-$form.Controls.Add($lblUser)
+$lblUser.Location = New-Object Point(10, 20)
+$lblUser.AutoSize = $true
+$inputPanel.Controls.Add($lblUser)
 
 $txtUser = New-Object TextBox
-$txtUser.Location = New-Object Point(100, 18)
+$txtUser.Location = New-Object Point(90, 15)
 $txtUser.Size = New-Object Size(180, 25)
-$form.Controls.Add($txtUser)
+$inputPanel.Controls.Add($txtUser)
 
 # Domain label and combobox
 $lblDomain = New-Object Label
 $lblDomain.Text = "Domain:"
-$lblDomain.Location = New-Object Point(300, 20)
-$form.Controls.Add($lblDomain)
+$lblDomain.Location = New-Object Point(290, 20)
+$lblDomain.AutoSize = $true
+$inputPanel.Controls.Add($lblDomain)
 
 $cmbDomain = New-Object ComboBox
-$cmbDomain.Location = New-Object Point(360, 18)
+$cmbDomain.Location = New-Object Point(350, 15)
 $cmbDomain.Size = New-Object Size(200, 25)
 $cmbDomain.DropDownStyle = 'DropDownList'
-$form.Controls.Add($cmbDomain)
+$inputPanel.Controls.Add($cmbDomain)
 
 # From date label and picker
 $lblFrom = New-Object Label
 $lblFrom.Text = "From:"
-$lblFrom.Location = New-Object Point(580, 20)
-$form.Controls.Add($lblFrom)
+$lblFrom.Location = New-Object Point(570, 20)
+$lblFrom.AutoSize = $true
+$inputPanel.Controls.Add($lblFrom)
 
 $dtpFrom = New-Object DateTimePicker
-$dtpFrom.Location = New-Object Point(620, 18)
+$dtpFrom.Location = New-Object Point(620, 15)
+$dtpFrom.Size = New-Object Size(130, 25)
 $dtpFrom.Value = (Get-Date).AddDays(-1)
-$form.Controls.Add($dtpFrom)
+$inputPanel.Controls.Add($dtpFrom)
 
 # To date label and picker
 $lblTo = New-Object Label
 $lblTo.Text = "To:"
-$lblTo.Location = New-Object Point(760, 20)
-$form.Controls.Add($lblTo)
+$lblTo.Location = New-Object Point(770, 20)
+$lblTo.AutoSize = $true
+$inputPanel.Controls.Add($lblTo)
 
 $dtpTo = New-Object DateTimePicker
-$dtpTo.Location = New-Object Point(790, 18)
+$dtpTo.Location = New-Object Point(800, 15)
+$dtpTo.Size = New-Object Size(130, 25)
 $dtpTo.Value = Get-Date
-$form.Controls.Add($dtpTo)
+$inputPanel.Controls.Add($dtpTo)
 
 # Run button
 $btnRun = New-Object Button
 $btnRun.Text = "Run Trace"
-$btnRun.Location = New-Object Point(920, 16)
-$btnRun.Size = New-Object Size(100, 30)
-$form.Controls.Add($btnRun)
+$btnRun.Location = New-Object Point(950, 15)
+$btnRun.Size = New-Object Size(60, 30)
+$inputPanel.Controls.Add($btnRun)
 
-# Progress bar
-$progress = New-Object ProgressBar
-$progress.Location = New-Object Point(20, 60)
-$progress.Size = New-Object Size(1000, 20)
-$form.Controls.Add($progress)
+# Panels for the two list views side by side
+$dcPanel = New-Object Panel
+$dcPanel.Location = New-Object Point(10, 90)
+$dcPanel.Size = New-Object Size(500, 550)
+$dcPanel.Anchor = 'Top, Left, Bottom'
+$form.Controls.Add($dcPanel)
 
-# Status bar with status label
-$statusBar = New-Object StatusStrip
-$statusLabel = New-Object ToolStripStatusLabel
-$statusLabel.Text = "Ready"
-$statusBar.Items.Add($statusLabel)
-$form.Controls.Add($statusBar)
+$eventPanel = New-Object Panel
+$eventPanel.Location = New-Object Point(520, 90)
+$eventPanel.Size = New-Object Size(510, 550)
+$eventPanel.Anchor = 'Top, Right, Bottom'
+$form.Controls.Add($eventPanel)
 
 # DC ListView
 $lvDC = New-Object ListView
 $lvDC.View = 'Details'
 $lvDC.FullRowSelect = $true
 $lvDC.GridLines = $true
-$lvDC.Size = New-Object Size(480, 250)
-$lvDC.Location = New-Object Point(20, 90)
-$lvDC.Columns.Add("Domain Controller", 200) | Out-Null
-$lvDC.Columns.Add("Status", 260) | Out-Null
-$form.Controls.Add($lvDC)
+$lvDC.Dock = 'Fill'
+$lvDC.Columns.Add("Domain Controller", 230) | Out-Null
+$lvDC.Columns.Add("Status", 240) | Out-Null
+$dcPanel.Controls.Add($lvDC)
 
 # Event ListView
 $lvEvt = New-Object ListView
 $lvEvt.View = 'Details'
 $lvEvt.FullRowSelect = $true
 $lvEvt.GridLines = $true
-$lvEvt.Size = New-Object Size(480, 550)
-$lvEvt.Location = New-Object Point(520, 90)
-"DC","Caller","Time","EventID","Reason" | ForEach-Object { $lvEvt.Columns.Add($_,90) | Out-Null }
-$form.Controls.Add($lvEvt)
+$lvEvt.Dock = 'Fill'
+"DC","Caller","Time","EventID","Reason" | ForEach-Object { $lvEvt.Columns.Add($_,100) | Out-Null }
+$eventPanel.Controls.Add($lvEvt)
 
-# Export CSV button
+# Progress bar below input panel, spanning width
+$progress = New-Object ProgressBar
+$progress.Location = New-Object Point(10, 660)
+$progress.Size = New-Object Size(1000, 20)
+$progress.Anchor = 'Bottom, Left, Right'
+$form.Controls.Add($progress)
+
+# Status bar at the bottom
+$statusBar = New-Object StatusStrip
+$statusBar.Location = New-Object Point(0, 685)
+$statusBar.Size = New-Object Size(1040, 25)
+$statusBar.Anchor = 'Bottom, Left, Right'
+$form.Controls.Add($statusBar)
+
+# Status labels
+$statusLabel = New-Object ToolStripStatusLabel
+$statusLabel.Text = "Ready"
+$statusBar.Items.Add($statusLabel)
+
+$statusDCLabel = New-Object ToolStripStatusLabel
+$statusDCLabel.Text = ""
+$statusBar.Items.Add($statusDCLabel)
+
+# Export CSV button at bottom left (above progress bar)
 $btnExport = New-Object Button
 $btnExport.Text = "Export CSV"
-$btnExport.Location = New-Object Point(20, 350)
+$btnExport.Location = New-Object Point(10, 620)
 $btnExport.Size = New-Object Size(100, 30)
 $btnExport.Enabled = $false
+$btnExport.Anchor = 'Bottom, Left'
 $form.Controls.Add($btnExport)
 
-# -- Populate domain list --
+# Populate domain list
 try {
     $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
     foreach ($domain in $forest.Domains) {
@@ -120,12 +153,12 @@ try {
     [MessageBox]::Show("Error loading domain list:`n$($_.Exception.Message)")
 }
 
-# -- Runspace pool for async operations --
+# Runspace pool
 $runspacePool = [runspacefactory]::CreateRunspacePool(1, [environment]::ProcessorCount)
 $runspacePool.Open()
 
 function Invoke-LockoutQueryAsync {
-    param($user, $domain, $from, $to, $eventIds)
+    param($user, $domain, $from, $to, $eventIds, $progressUpdateCallback)
 
     $ps = [powershell]::Create()
     $ps.RunspacePool = $runspacePool
@@ -145,6 +178,9 @@ function Invoke-LockoutQueryAsync {
 
             $dcs = $targetDomain.DomainControllers
             foreach ($dc in $dcs) {
+                # Report current DC to GUI (via progress update)
+                Write-Progress -Activity "Querying DCs" -Status "Processing $($dc.Name)" -PercentComplete 0
+
                 $status = "Success"
                 try {
                     $logs = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
@@ -176,6 +212,10 @@ function Invoke-LockoutQueryAsync {
                     $status = "Error: $($_.Exception.Message -split '\n')[0]"
                 }
                 $statuses += [pscustomobject]@{ DC = $dc.Name; Status = $status }
+
+                # Update progress - invoke callback in parent runspace
+                # Since this runs in different runspace, it cannot update GUI directly
+                # We use Write-Progress but it won't update GUI; better approach: see below
             }
 
             return @{ Results = $results; Statuses = $statuses }
@@ -192,7 +232,7 @@ function Invoke-LockoutQueryAsync {
     return @{ PowerShell = $ps; AsyncResult = $asyncResult }
 }
 
-# -- Run Button click handler --
+# Run button click handler
 $btnRun.Add_Click({
     $user = $txtUser.Text.Trim()
     $domain = $cmbDomain.SelectedItem
@@ -210,10 +250,11 @@ $btnRun.Add_Click({
     $lvEvt.Items.Clear()
     $progress.Style = 'Marquee'
     $statusLabel.Text = "Running..."
+    $statusDCLabel.Text = ""
 
     $job = Invoke-LockoutQueryAsync -user $user -domain $domain -from $from -to $to -eventIds $eventIds
 
-    # Timer to poll for completion
+    # Timer to poll for completion and update UI
     $timer = New-Object Timers.Timer
     $timer.Interval = 500
     $timer.AutoReset = $true
@@ -228,7 +269,6 @@ $btnRun.Add_Click({
             $output = $job.PowerShell.EndInvoke($job.AsyncResult)
             $job.PowerShell.Dispose()
 
-            # Update UI on GUI thread
             $form.Invoke([action]{
                 foreach ($dc in $output.Statuses) {
                     $item = New-Object ListViewItem($dc.DC)
@@ -245,14 +285,21 @@ $btnRun.Add_Click({
                 }
 
                 $statusLabel.Text = "Completed."
+                $statusDCLabel.Text = ""
                 $btnRun.Enabled = $true
                 $btnExport.Enabled = $lvEvt.Items.Count -gt 0
+            })
+        } else {
+            # We can't update current DC from inside the remote runspace, so just keep marquee style progress
+            # If you want to show live DC being queried, we'd need a more complex callback or runspace event mechanism
+            $form.Invoke([action]{
+                $statusDCLabel.Text = "Processing domain controllers..."
             })
         }
     })
 })
 
-# -- Export CSV button --
+# Export CSV button
 $btnExport.Add_Click({
     if ($lvEvt.Items.Count -eq 0) {
         [MessageBox]::Show("No events to export.")
@@ -274,9 +321,9 @@ $btnExport.Add_Click({
     }
 })
 
-# -- Show Form --
+# Show form
 [void]$form.ShowDialog()
 
-# Cleanup runspace pool on exit
+# Cleanup runspace pool
 $runspacePool.Close()
 $runspacePool.Dispose()
