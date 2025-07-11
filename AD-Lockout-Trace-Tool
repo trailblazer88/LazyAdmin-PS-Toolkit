@@ -1,1 +1,144 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+function Get-EventDetails {
+    param (
+        [System.Diagnostics.Eventing.Reader.EventRecord]$event
+    )
+
+    $data = [xml]$event.ToXml()
+    $eventID = $event.Id
+    $timestamp = $event.TimeCreated
+    $dc = $event.MachineName
+
+    $eventData = @{
+        EventID         = $eventID
+        DomainController = $dc
+        Timestamp       = $timestamp
+        CallerComputer  = ""
+        Reason          = ""
+    }
+
+    switch ($eventID) {
+        4740 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "CallerComputerName" }).'#text'
+            $eventData.Reason = "Account Lockout"
+        }
+        4625 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "WorkstationName" }).'#text'
+            $status = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "Status" }).'#text'
+            $subStatus = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "SubStatus" }).'#text'
+            $eventData.Reason = "Failed Logon (4625) - Status: $status, SubStatus: $subStatus"
+        }
+        4771 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "WorkstationName" }).'#text'
+            $failureCode = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "FailureCode" }).'#text'
+            $eventData.Reason = "Kerberos Pre-Auth Failed - Code: $failureCode"
+        }
+        4776 {
+            $eventData.CallerComputer = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "Workstation" }).'#text'
+            $status = ($data.Event.EventData.Data | Where-Object { $_.Name -eq "Status" }).'#text'
+            $eventData.Reason = "NTLM Auth Failed - Status: $status"
+        }
+    }
+
+    return $eventData
+}
+
+function Find-LockoutEvents {
+    param (
+        [string]$Username
+    )
+
+    $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+    $results = @()
+    $eventIDs = 4740, 4625, 4771, 4776
+
+    foreach ($domain in $forest.Domains) {
+        foreach ($dc in $domain.DomainControllers) {
+            try {
+                $events = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
+                    LogName = 'Security'
+                    ID = $eventIDs
+                    StartTime = (Get-Date).AddDays(-1)
+                } -ErrorAction Stop
+
+                foreach ($event in $events) {
+                    $xml = [xml]$event.ToXml()
+                    $user = ($xml.Event.EventData.Data | Where-Object { $_.Name -eq "TargetUserName" }).'#text'
+
+                    if ($user -and $user -ieq $Username) {
+                        $eventDetails = Get-EventDetails -event $event
+                        $results += [PSCustomObject]$eventDetails
+                    }
+                }
+            } catch {
+                [System.Windows.Forms.MessageBox]::Show("Error accessing $($dc.Name): $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            }
+        }
+    }
+
+    return $results
+}
+
+# GUI Setup
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "AD Lockout & Failed Login Tracer"
+$form.Size = New-Object System.Drawing.Size(800, 550)
+$form.StartPosition = "CenterScreen"
+
+$label = New-Object System.Windows.Forms.Label
+$label.Text = "Enter username:"
+$label.Location = New-Object System.Drawing.Point(10,20)
+$label.Size = New-Object System.Drawing.Size(100,20)
+$form.Controls.Add($label)
+
+$textbox = New-Object System.Windows.Forms.TextBox
+$textbox.Location = New-Object System.Drawing.Point(120, 20)
+$textbox.Size = New-Object System.Drawing.Size(200,20)
+$form.Controls.Add($textbox)
+
+$button = New-Object System.Windows.Forms.Button
+$button.Text = "Find Events"
+$button.Location = New-Object System.Drawing.Point(340, 18)
+$button.Size = New-Object System.Drawing.Size(100,25)
+$form.Controls.Add($button)
+
+$listView = New-Object System.Windows.Forms.ListView
+$listView.View = 'Details'
+$listView.FullRowSelect = $true
+$listView.GridLines = $true
+$listView.Size = New-Object System.Drawing.Size(760, 420)
+$listView.Location = New-Object System.Drawing.Point(10, 60)
+$listView.Columns.Add("DC", 150)
+$listView.Columns.Add("Caller", 150)
+$listView.Columns.Add("Time", 180)
+$listView.Columns.Add("EventID", 60)
+$listView.Columns.Add("Reason", 200)
+$form.Controls.Add($listView)
+
+$button.Add_Click({
+    $listView.Items.Clear()
+    $username = $textbox.Text.Trim()
+    if (-not $username) {
+        [System.Windows.Forms.MessageBox]::Show("Please enter a username.")
+        return
+    }
+
+    $results = Find-LockoutEvents -Username $username
+    if ($results.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("No relevant events found.")
+    } else {
+        foreach ($res in $results) {
+            $item = New-Object System.Windows.Forms.ListViewItem($res.DomainController)
+            $item.SubItems.Add($res.CallerComputer)
+            $item.SubItems.Add($res.Timestamp.ToString("g"))
+            $item.SubItems.Add($res.EventID.ToString())
+            $item.SubItems.Add($res.Reason)
+            $listView.Items.Add($item)
+        }
+    }
+})
+
+[void]$form.ShowDialog()
 
