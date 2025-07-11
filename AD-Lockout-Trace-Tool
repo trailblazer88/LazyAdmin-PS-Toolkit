@@ -1,123 +1,90 @@
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 
-# Create form
+# ----- Form Setup -----
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Active Directory Lockout Tracer"
-$form.Size = New-Object System.Drawing.Size(1040, 720)
-$form.StartPosition = "CenterScreen"
-$form.BackColor = [System.Drawing.Color]::White
-$form.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$form.Text = "AD Lockout & Logon Tracer"
+$form.Width = 1040; $form.Height = 720
+$form.StartPosition = 'CenterScreen'
+$form.BackColor = [Color]::White
+$form.Font = New-Object Font("Segoe UI",10)
 
-# Username
-$lblUser = New-Object System.Windows.Forms.Label
-$lblUser.Text = "Username:"
-$lblUser.Location = "20,20"
-$lblUser.AutoSize = $true
-$form.Controls.Add($lblUser)
+# ----- Controls -----
+function Add-Label($text, $x, $y) {
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $text; $lbl.Location = New-Object Point($x,$y)
+    $lbl.AutoSize = $true
+    $form.Controls.Add($lbl); return $lbl
+}
+function Add-Textbox($x, $y, $w=180) {
+    $tb = New-Object System.Windows.Forms.TextBox
+    $tb.Location = New-Object Point($x,$y); $tb.Width = $w
+    $form.Controls.Add($tb); return $tb
+}
+function Add-DatePicker($x, $y) {
+    $dp = New-Object System.Windows.Forms.DateTimePicker
+    $dp.Location = New-Object Point($x,$y); $dp.Width = 120
+    $form.Controls.Add($dp); return $dp
+}
+function Add-Button($text, $x, $y) {
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Text = $text
+    $btn.Location = New-Object Point($x,$y)
+    $btn.Width = 100; $btn.Height = 30
+    $btn.FlatStyle = 'Flat'
+    $form.Controls.Add($btn); return $btn
+}
 
-$txtUser = New-Object System.Windows.Forms.TextBox
-$txtUser.Location = "100,18"
-$txtUser.Size = "180,25"
-$form.Controls.Add($txtUser)
-
-# Domain
-$lblDomain = New-Object System.Windows.Forms.Label
-$lblDomain.Text = "Domain:"
-$lblDomain.Location = "300,20"
-$lblDomain.AutoSize = $true
-$form.Controls.Add($lblDomain)
-
+# Input fields
+Add-Label "Username:" 20 20 │ Out-Null
+$txtUser = Add-Textbox 100 18
+Add-Label "Domain:" 300 20 │ Out-Null
 $cmbDomain = New-Object System.Windows.Forms.ComboBox
-$cmbDomain.Location = "370,18"
-$cmbDomain.Size = "200,25"
+$cmbDomain.Location = New-Object Point(360,18)
+$cmbDomain.Width = 200
 $cmbDomain.DropDownStyle = 'DropDownList'
 $form.Controls.Add($cmbDomain)
 
-# Date Range
-$lblFrom = New-Object System.Windows.Forms.Label
-$lblFrom.Text = "From:"
-$lblFrom.Location = "600,20"
-$form.Controls.Add($lblFrom)
-
-$dtpFrom = New-Object System.Windows.Forms.DateTimePicker
-$dtpFrom.Location = "645,18"
-$dtpFrom.Size = "120,25"
+Add-Label "From:" 580 20 │ Out-Null
+$dtpFrom = Add-DatePicker 620 18
 $dtpFrom.Value = (Get-Date).AddDays(-1)
-$form.Controls.Add($dtpFrom)
+Add-Label "To:" 760 20 │ Out-Null
+$dtpTo = Add-DatePicker 790 18
 
-$lblTo = New-Object System.Windows.Forms.Label
-$lblTo.Text = "To:"
-$lblTo.Location = "780,20"
-$form.Controls.Add($lblTo)
-
-$dtpTo = New-Object System.Windows.Forms.DateTimePicker
-$dtpTo.Location = "810,18"
-$dtpTo.Size = "120,25"
-$dtpTo.Value = Get-Date
-$form.Controls.Add($dtpTo)
-
-# Run button
-$btnRun = New-Object System.Windows.Forms.Button
-$btnRun.Text = "Run Trace"
-$btnRun.Location = "940,16"
-$btnRun.Size = "80,30"
-$btnRun.FlatStyle = 'Flat'
-$form.Controls.Add($btnRun)
-
-# Progress bar
+$btnRun = Add-Button "Run Trace" 920 16
 $progress = New-Object System.Windows.Forms.ProgressBar
-$progress.Location = "20,60"
-$progress.Size = "1000,20"
-$progress.Style = 'Blocks'
+$progress.Location = New-Object Point(20,60); $progress.Width = 1000
 $form.Controls.Add($progress)
 
-# Domain Controller status
+# Result lists
 $lvDC = New-Object System.Windows.Forms.ListView
-$lvDC.View = 'Details'
-$lvDC.FullRowSelect = $true
-$lvDC.GridLines = $true
-$lvDC.Location = "20,90"
-$lvDC.Size = "480,250"
-$lvDC.Columns.Add("Domain Controller", 200) | Out-Null
-$lvDC.Columns.Add("Status", 260) | Out-Null
+$lvDC.View='Details'; $lvDC.FullRowSelect=$true; $lvDC.GridLines=$true
+$lvDC.Location=New-Object Point(20,90); $lvDC.Width=480; $lvDC.Height=250
+$lvDC.Columns.Add("DC",200)|Out-Null
+$lvDC.Columns.Add("Status",260)|Out-Null
 $form.Controls.Add($lvDC)
 
-# Event results
-$lvResults = New-Object System.Windows.Forms.ListView
-$lvResults.View = 'Details'
-$lvResults.FullRowSelect = $true
-$lvResults.GridLines = $true
-$lvResults.Location = "520,90"
-$lvResults.Size = "500,500"
-$lvResults.Columns.Add("DC", 100) | Out-Null
-$lvResults.Columns.Add("Caller", 100) | Out-Null
-$lvResults.Columns.Add("Time", 120) | Out-Null
-$lvResults.Columns.Add("EventID", 60) | Out-Null
-$lvResults.Columns.Add("Reason", 120) | Out-Null
-$form.Controls.Add($lvResults)
+$lvEvt = New-Object System.Windows.Forms.ListView
+$lvEvt.View='Details'; $lvEvt.FullRowSelect=$true; $lvEvt.GridLines=$true
+$lvEvt.Location=New-Object Point(520,90); $lvEvt.Width=480; $lvEvt.Height=500
+"DC","Caller","Time","EventID","Reason" | ForEach-Object { $lvEvt.Columns.Add($_,90)|Out-Null }
+$form.Controls.Add($lvEvt)
 
-# Export Button
-$btnExport = New-Object System.Windows.Forms.Button
-$btnExport.Text = "Export CSV"
-$btnExport.Location = "20,350"
-$btnExport.Size = "100,30"
-$btnExport.FlatStyle = 'Flat'
+$btnExport = Add-Button "Export CSV" 20 350
 $btnExport.Enabled = $false
-$form.Controls.Add($btnExport)
 
-# Populate domains
+# ----- Domain Combo Population -----
 try {
-    $domains = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains | ForEach-Object { $_.Name }
-    $cmbDomain.Items.AddRange($domains)
+    [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains.Name | ForEach-Object {
+        $cmbDomain.Items.Add($_) | Out-Null
+    }
     if ($cmbDomain.Items.Count -gt 0) { $cmbDomain.SelectedIndex = 0 }
 } catch {
-    [System.Windows.Forms.MessageBox]::Show("Failed to get domain list: $_")
+    [System.Windows.Forms.MessageBox]::Show("Failed loading domains: $_")
 }
 
-# Results store
+# ----- Core Logic -----
 $global:Results = @()
 
-# Run logic in background
 $btnRun.Add_Click({
     $user = $txtUser.Text.Trim()
     $domain = $cmbDomain.SelectedItem
@@ -125,117 +92,82 @@ $btnRun.Add_Click({
     $to = $dtpTo.Value
     $ids = 4740,4625,4771,4776
 
-    if (-not $user) {
-        [System.Windows.Forms.MessageBox]::Show("Please enter a username.")
-        return
-    }
+    if (-not $user) { MessageBox::Show("Enter a username."); return }
+    if (-not $domain) { MessageBox::Show("Select a domain."); return }
+    if ($from -gt $to) { MessageBox::Show("'From' must be ≤ 'To'"); return }
 
-    $btnRun.Enabled = $false
-    $btnExport.Enabled = $false
-    $progress.Style = 'Marquee'
-    $lvDC.Items.Clear()
-    $lvResults.Items.Clear()
+    $btnRun.Enabled = $false; $btnExport.Enabled = $false
+    $lvDC.Items.Clear(); $lvEvt.Items.Clear()
+    $progress.Value = 0
 
-    Start-Job -ScriptBlock {
-        param($user, $domain, $from, $to, $ids)
+    # Query DCs
+    $dcs = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest().Domains |
+           Where { $_.Name -ieq $domain } |
+           ForEach-Object { $_.DomainControllers }
+    $total = $dcs.Count; $i = 0
+    $global:Results = @()
 
-        $output = @{
-            Events = @()
-            DCs = @()
-        }
+    foreach ($dc in $dcs) {
+        $i++; $progress.Value = [int](($i/$total)*100)
+        [System.Windows.Forms.Application]::DoEvents()
 
+        $status = "Success"
         try {
-            $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
-            $targetDomain = $forest.Domains | Where-Object { $_.Name -ieq $domain }
-            $dcs = $targetDomain.DomainControllers
+            $evts = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
+                LogName='Security'; ID=$ids
+                StartTime=$from; EndTime=$to
+            } -ErrorAction Stop
 
-            foreach ($dc in $dcs) {
-                $status = "Success"
-                try {
-                    $logs = Get-WinEvent -ComputerName $dc.Name -FilterHashtable @{
-                        LogName = 'Security'
-                        ID = $ids
-                        StartTime = $from
-                        EndTime = $to
-                    } -ErrorAction Stop
-
-                    foreach ($e in $logs) {
-                        $x = [xml]$e.ToXml()
-                        $tuser = ($x.Event.EventData.Data | Where-Object { $_.Name -eq 'TargetUserName' }).'#text'
-                        if ($tuser -ieq $user) {
-                            $caller = ($x.Event.EventData.Data | Where-Object { $_.Name -match 'CallerComputerName|WorkstationName|Workstation' }).'#text'
-                            $reason = switch ($e.Id) {
-                                4740 { "Account Lockout" }
-                                4625 { "Failed Logon" }
-                                4771 { "Kerberos Pre-Auth Failed" }
-                                4776 { "NTLM Failure" }
-                                default { "Unknown" }
-                            }
-
-                            $output.Events += [pscustomobject]@{
-                                DC = $dc.Name
-                                Caller = $caller
-                                Time = $e.TimeCreated
-                                EventID = $e.Id
-                                Reason = $reason
-                            }
-                        }
+            foreach ($e in $evts) {
+                $x=[xml]$e.ToXml()
+                $t = ($x.Event.EventData.Data | Where Name -eq 'TargetUserName').'#text'
+                if ($t -ieq $user) {
+                    $caller = ($x.Event.EventData.Data |
+                        Where Name -match 'CallerComputerName|WorkstationName|Workstation').'#text'
+                    $reason = switch ($e.Id) {
+                        4740 {'Lockout'};4625 {'Failed Logon'};4771 {'Kerberos Fail'};4776 {'NTLM Fail'};
+                        default { 'Other' }
                     }
-                } catch {
-                    $status = "Error: $($_.Exception.Message.Split("`n")[0])"
-                }
 
-                $output.DCs += [pscustomobject]@{Name=$dc.Name;Status=$status}
+                    $global:Results += [pscustomobject]@{
+                        DC=$dc.Name; Caller=$caller; Time=$e.TimeCreated;
+                        EventID=$e.Id; Reason=$reason
+                    }
+                }
             }
         } catch {
-            $output.DCs += [pscustomobject]@{Name='Forest Error';Status="$_"}
+            $status = "Error: $($_.Exception.Message.Split('`n')[0])"
         }
 
-        return $output
-    } -ArgumentList $user, $domain, $from, $to, $ids | Register-ObjectEvent -EventName StateChanged -Action {
-        $job = $event.Sender
-        if ($job.State -eq 'Completed') {
-            $result = Receive-Job -Job $job
-            Remove-Job $job
-
-            $progress.Style = 'Blocks'
-            $progress.Value = 100
-
-            $result.DCs | ForEach-Object {
-                $item = New-Object System.Windows.Forms.ListViewItem($_.Name)
-                $item.SubItems.Add($_.Status)
-                if ($_.Status -like 'Error*') { $item.BackColor = 'LightPink' }
-                elseif ($_.Status -eq 'Success') { $item.BackColor = 'LightGreen' }
-                $lvDC.Items.Add($item)
-            }
-
-            $global:Results = $result.Events
-
-            $result.Events | ForEach-Object {
-                $item = New-Object System.Windows.Forms.ListViewItem($_.DC)
-                $item.SubItems.Add($_.Caller)
-                $item.SubItems.Add($_.Time.ToString("g"))
-                $item.SubItems.Add($_.EventID.ToString())
-                $item.SubItems.Add($_.Reason)
-                $lvResults.Items.Add($item)
-            }
-
-            $btnRun.Enabled = $true
-            $btnExport.Enabled = ($global:Results.Count -gt 0)
-        }
+        $item = New-Object System.Windows.Forms.ListViewItem($dc.Name)
+        $item.SubItems.Add($status)
+        if ($status -match '^Error') { $item.BackColor = 'LightSalmon' }
+        elseif ($status -eq 'Success') { $item.BackColor = 'LightGreen' }
+        $lvDC.Items.Add($item)
     }
+
+    # Results display
+    foreach ($r in $global:Results) {
+        $it=New-Object System.Windows.Forms.ListViewItem($r.DC)
+        $it.SubItems.AddRange(@($r.Caller,$r.Time.ToString('g'),$r.EventID,$r.Reason))
+        $lvEvt.Items.Add($it)
+    }
+
+    $progress.Value = 100
+    $btnRun.Enabled = $true
+    $btnExport.Enabled = ($global:Results.Count -gt 0)
 })
 
-# Export results
 $btnExport.Add_Click({
-    $save = New-Object System.Windows.Forms.SaveFileDialog
-    $save.Filter = "CSV files (*.csv)|*.csv"
-    $save.FileName = "LockoutTrace_$(Get-Date -Format yyyyMMdd_HHmmss).csv"
-    if ($save.ShowDialog() -eq 'OK') {
-        $global:Results | Export-Csv -Path $save.FileName -NoTypeInformation
-        [System.Windows.Forms.MessageBox]::Show("Exported to $($save.FileName)", "Export Successful")
+    $sf = New-Object System.Windows.Forms.SaveFileDialog
+    $sf.Filter="CSV (*.csv)|*.csv"
+    $sf.FileName="LockoutTrace_$(Get-Date -f yyyyMMdd_HHmmss).csv"
+    if ($sf.ShowDialog() -eq 'OK') {
+        $global:Results | Export-Csv -Path $sf.FileName -NoTypeInformation
+        [System.Windows.Forms.MessageBox]::Show("Exported: $($sf.FileName)")
     }
 })
 
+# ----- Run GUI -----
 [System.Windows.Forms.Application]::EnableVisualStyles()
 [System.Windows.Forms.Application]::Run($form)
